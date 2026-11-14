@@ -6,11 +6,19 @@
 
 """Qwen3.8 model configurations used by tests."""
 
+from dataclasses import replace
+from functools import partial
+from pathlib import Path
 
 from torchtitan.components.data import ConcatThenSplitPackingConfig, GrainDataLoader
+from torchtitan.components.data.dataset import SingleDatasetConfig
 from torchtitan.components.data.multimodal.mm_collator import MultiModalCollator
-from torchtitan.components.data.multimodal.mm_datasets import MM_DATASETS
+from torchtitan.components.data.multimodal.mm_datasets import (
+    MM_DATASETS,
+    VisionSampleProcessor,
+)
 from torchtitan.components.data.multimodal.vision_processor import VisionProcessor
+from torchtitan.components.data.sources import IndexedJsonlSource
 from torchtitan.components.data.text_datasets import DATASETS
 from torchtitan.components.loss import ChunkedLossWrapper, CrossEntropyLoss
 from torchtitan.components.optim import (
@@ -39,6 +47,10 @@ from torchtitan.observability.metrics import MetricsProcessor
 from torchtitan.trainer import Trainer
 
 from torchtitan_recipes.data import c4_document_capacity
+from torchtitan_recipes.tests.datasets.qwen_video import (
+    process_qwen_video_sample,
+    QwenVideoVisionProcessor,
+)
 
 
 def qwen38_debugmodel(
@@ -83,6 +95,43 @@ def qwen38_debugmodel(
         checkpointer=None,
         activation_remat=DefaultActivationRematConfig(),
     )
+
+
+def qwen38_debugmodel_timestamped_video(
+    manifest: str = "./assets/qwen38-video/manifest.jsonl",
+    video_root: str | None = None,
+    hf_assets_path: str = "./assets/hf/Qwen3.8-27B",
+    seq_len: int | None = DEFAULT_DEBUG_MODEL_SEQ_LEN,
+) -> Trainer.Config:
+    """Validate timestamped prompts with explicitly sampled video frames."""
+    config = qwen38_debugmodel(seq_len=seq_len)
+    config.hf_assets_path = hf_assets_path
+    config.vision_processor = QwenVideoVisionProcessor.Config(
+        **(QWEN3_8_VISION_PROCESSOR_KWARGS | {"video_resize": None}),
+        video_min_pixels=4096,
+        video_max_pixels=25_165_824,
+    )
+    dataset = SingleDatasetConfig(
+        source=IndexedJsonlSource.Config(patterns=(manifest,)),
+        processor=VisionSampleProcessor.Config(
+            sample_processor=partial(
+                process_qwen_video_sample,
+                video_root=Path(video_root)
+                if video_root is not None
+                else Path(manifest).parent,
+            ),
+        ),
+        post_filters=(lambda sample: sample is not None,),
+    )
+    config.dataloader = replace(
+        config.dataloader,
+        dataset=dataset,
+        collator=MultiModalCollator.Config(
+            build_mrope_positions=True, max_images_per_microbatch=128
+        ),
+    )
+    config.training.disable_accelerator_graphs = True
+    return config
 
 
 def qwen38_debugmodel_varlen_attn(

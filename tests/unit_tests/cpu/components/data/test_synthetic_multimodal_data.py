@@ -460,7 +460,7 @@ def test_qwen_timestamped_video_rejects_frame_budget_below_grid(audio_tokenizer)
     ],
 )
 def test_qwen_timestamped_video_retains_temporal_patches_and_shift(
-    tmp_path, audio_tokenizer, frame_indices, fps, timestamps
+    tmp_path, audio_tokenizer, frame_indices, fps, timestamps, monkeypatch
 ):
     num_frames = len(frame_indices)
     frame_values = 30 * torch.arange(num_frames, dtype=torch.uint8)
@@ -482,6 +482,14 @@ def test_qwen_timestamped_video_retains_temporal_patches_and_shift(
         with pytest.raises(ValueError, match="at least 2 sampled frames.*got 1"):
             processor(sample, np.random.default_rng(0))
         return
+    encoded_text = []
+    encode = audio_tokenizer.encode
+
+    def record_text(text):
+        encoded_text.append(text)
+        return encode(text)
+
+    monkeypatch.setattr(audio_tokenizer, "encode", record_text)
     result = processor(sample, np.random.default_rng(0))
     expected_text = (
         "before<vision_start>"
@@ -491,7 +499,8 @@ def test_qwen_timestamped_video_retains_temporal_patches_and_shift(
         )
         + "<vision_end>after<eos>"
     )
-    expected_ids = torch.tensor(audio_tokenizer.encode(expected_text))
+    assert encoded_text == [expected_text]
+    expected_ids = torch.tensor(encode(expected_text))
     assert torch.equal(result["input_ids"], expected_ids[:-1])
     expected_labels = expected_ids[1:].clone()
     expected_labels[

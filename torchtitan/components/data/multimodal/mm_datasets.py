@@ -87,7 +87,7 @@ from .vision_processor import VisionProcessor
 logger = logging.getLogger(__name__)
 
 
-def _tokenize_mm_text(
+def tokenize_mm_text(
     processed_text: str,
     tokenizer: MultiModalTokenizer,
 ) -> dict[str, torch.Tensor] | None:
@@ -162,7 +162,7 @@ def _process_audio_text_sample(
             eos_token,
         ]
     )
-    text_fields = _tokenize_mm_text(processed_text, tokenizer)
+    text_fields = tokenize_mm_text(processed_text, tokenizer)
     if text_fields is None:
         return None
     return {
@@ -204,7 +204,7 @@ def _process_video_text_sample(
         ),
         eos_token=cast(str, tokenizer.eos_token),
     )
-    text_fields = _tokenize_mm_text(processed_text, tokenizer)
+    text_fields = tokenize_mm_text(processed_text, tokenizer)
     if text_fields is None:
         return None
     return {**text_fields, "pixel_values_videos": [processed_video]}
@@ -277,7 +277,7 @@ def _process_mm_sample(
         eos_token=tokenizer.eos_token,
     )
 
-    text_fields = _tokenize_mm_text(processed_text, tokenizer)
+    text_fields = tokenize_mm_text(processed_text, tokenizer)
     if text_fields is None:
         return None
     return {**text_fields, "pixel_values": processed_images}
